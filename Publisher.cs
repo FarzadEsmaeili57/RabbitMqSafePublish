@@ -2,6 +2,7 @@
 using System.Text.Json;
 using RabbitMQ.Client;
 using RabbitMQ.Client.Events;
+using RabbitMqSafePublish.Exceptions;
 
 namespace RabbitMqSafePublish;
 
@@ -60,14 +61,9 @@ public class RabbitMqPublisher
 
     private void OnBasicReturn(object model, BasicReturnEventArgs args)
     {
-        if (args.ReplyCode > 0)
-        {
-            var payload = Encoding.UTF8.GetString(args.Body.Span);
-            var exception = new MessageReturnedException(args.ReplyText, args.ReplyCode, payload,
-                args.Exchange, args.RoutingKey, ((IModel)model).CurrentQueue);
-
-            _pendingConfirmation.TrySetException(exception);
-        }
+        var body = Encoding.UTF8.GetString(args.Body.Span);
+        var exception = new MessageReturnedException(body, args.Exchange, args.RoutingKey, args.ReplyCode, args.ReplyText);
+        _pendingConfirmation.TrySetException(exception);
     }
 
     private void OnAcknowledged(object model, BasicAckEventArgs args)
@@ -77,7 +73,7 @@ public class RabbitMqPublisher
 
     private void OnNotAcknowledged(object model, BasicNackEventArgs args)
     {
-        var exception = new Exception("The message was not acknowledged by RabbitMQ Publisher");
+        var exception = new MessageNotAcknowledgedException("The message was not acknowledged by RabbitMQ Publisher");
         _pendingConfirmation.TrySetException(exception);
     }
 
@@ -91,7 +87,7 @@ public class RabbitMqPublisher
             ((IModel)model).BasicReturn -= OnBasicReturn;
         }
 
-        var exception = new Exception(args.ToString());
+        var exception = new MessageNotConfirmedException(args.ToString());
         _pendingConfirmation.TrySetException(exception);
     }
 }
